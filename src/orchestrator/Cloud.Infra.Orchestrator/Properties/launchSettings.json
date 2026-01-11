@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "Cloud.Infra.Orchestrator": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "environmentVariables": {
+        "OLLAMA_ENDPOINT": "http://ollama:11434/v1",
+        "OLLAMA_API_KEY": "ollama"
+      },
+      "containerName": "cloud-infra-orchestrator"
+    }
+  }
+}

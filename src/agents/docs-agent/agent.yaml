@@ -1,0 +1,29 @@
+$schema: ../../schemas/agent.platform.v1.schema.json
+apiVersion: agent.platform/v1
+kind: Agent
+
+metadata:
+  name: docs-agent
+  description: >
+    Produces clear, structured documentation and markdown
+    artifacts based on technical input and plans.
+
+spec:
+  capabilities:
+    - documentation
+    - markdown
+    - runbooks
+
+  permissions:
+    - read-plans
+    - write-docs
+
+  model:
+    runtime: ollama
+    base: llama3.1:8b
+
+  behavior:
+    temperature: 0.3
+    top_p: 0.9
+    repeat_penalty: 1.05
+    max_tokens: 1500

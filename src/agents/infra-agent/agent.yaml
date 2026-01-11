@@ -1,0 +1,30 @@
+$schema: ../../schemas/agent.platform.v1.schema.json
+apiVersion: agent.platform/v1
+kind: Agent
+
+metadata:
+  name: infra-agent
+  description: >
+    Designs and plans cloud infrastructure with a focus on
+    reliability, scalability, and operational best practices.
+
+spec:
+  capabilities:
+    - infrastructure
+    - architecture
+    - terraform
+    - azure
+
+  permissions:
+    - read-infra
+    - write-plans
+
+  model:
+    runtime: ollama
+    base: llama3.1:8b
+
+  behavior:
+    temperature: 0.2
+    top_p: 0.9
+    repeat_penalty: 1.1
+    max_tokens: 1200

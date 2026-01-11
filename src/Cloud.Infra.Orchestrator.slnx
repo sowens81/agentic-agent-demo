@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Container-Setup.md" />
+    <File Path="docker-compose.yaml" />
+  </Folder>
+  <Project Path="orchestrator/Cloud.Infra.Core/Cloud.Infra.Orchestrator.Core.csproj" />
+  <Project Path="orchestrator/Cloud.Infra.Infrastructure/Cloud.Infra.Orchestrator.Infrastructure.csproj" />
+  <Project Path="orchestrator/Cloud.Infra.Orchestrator/Cloud.Infra.Orchestrator.csproj" />
+</Solution>

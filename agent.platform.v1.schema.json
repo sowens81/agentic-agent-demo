@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/agent.platform.v1.schema.json",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "agent.platform/v1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Agent"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "description"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "spec": {
+      "type": "object",
+      "required": ["capabilities", "model"],
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "permissions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "model": {
+          "type": "object",
+          "required": ["runtime", "base"],
+          "properties": {
+            "runtime": { "type": "string" },
+            "base": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "behavior": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["number", "integer", "string", "boolean"]
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

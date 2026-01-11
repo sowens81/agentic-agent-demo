@@ -1,0 +1,30 @@
+$schema: ../../schemas/agent.platform.v1.schema.json
+apiVersion: agent.platform/v1
+kind: Agent
+
+metadata:
+  name: security-agent
+  description: >
+    Reviews infrastructure designs and configurations for
+    security risks, compliance gaps, and best-practice violations.
+
+spec:
+  capabilities:
+    - security-review
+    - threat-modeling
+    - compliance
+    - azure-security
+
+  permissions:
+    - read-infra
+    - read-plans
+
+  model:
+    runtime: ollama
+    base: llama3.1:8b
+
+  behavior:
+    temperature: 0.0
+    top_p: 1.0
+    repeat_penalty: 1.2
+    max_tokens: 1000
