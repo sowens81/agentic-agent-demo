@@ -1,0 +1,67 @@
+# Ignore build outputs, binaries, and IDE files
+[Bb]in/
+[Oo]bj/
+.vs/
+.idea/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.userprefs
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Docker artifacts
+docker-compose.yaml.override
+**/Dockerfile*
+
+# Database and migration artifacts
+src/databases/*.sql
+
+# Ollama build outputs
+src/ollama-init/
+
+# Ignore all bin/ and obj/ folders recursively
+**/bin/
+**/obj/
+
+# Ignore debug and release folders
+**/Debug/
+**/Release/
+
+# Ignore any generated editorconfig files
+**/*.GeneratedMSBuildEditorConfig.editorconfig
+
+# Ignore any local launch settings
+**/launchSettings.json
+
+# Ignore any files in orchestrator output
+src/orchestrator/Cloud.Infra.Orchestrator/bin/
+src/orchestrator/Cloud.Infra.Orchestrator/obj/
+src/orchestrator/Cloud.Infra.Core/bin/
+src/orchestrator/Cloud.Infra.Core/obj/
+src/orchestrator/Cloud.Infra.Infrastructure/bin/
+src/orchestrator/Cloud.Infra.Infrastructure/obj/
+
+# Ignore any local or temp files
+*.tmp
+*.log
+*.bak
+
+# End of .gitignore
