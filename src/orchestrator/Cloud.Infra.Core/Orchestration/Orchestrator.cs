@@ -1,6 +1,8 @@
 ﻿using Cloud.Infra.Orchestrator.Core.Agents;
+using Cloud.Infra.Orchestrator.Core.Models;
 using Microsoft.SemanticKernel;
 using System;
+using System.Text.Json;
 
 namespace Cloud.Infra.Orchestrator.Core.Orchestration;
 
@@ -50,4 +52,36 @@ public sealed class Orchestrator
         return result.ToString();
     }
 
+    public async Task<PlannerResult> CreatePlanAsync(string goal)
+    {
+        var planner = _registry.GetByCapability("planning").Single();
+
+        var prompt =
+        $"""
+        Create an execution plan for the following goal:
+
+        {goal}
+
+        Respond ONLY with valid JSON.
+        """;
+
+        var raw = await planner.Kernel.InvokePromptAsync(prompt);
+
+        var plan = JsonSerializer.Deserialize<PlannerResult>(
+            raw.ToString(),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+        ) ?? throw new InvalidOperationException("Invalid planner output");
+
+        // ✅ VALIDATION LIVES HERE
+        foreach (var step in plan.Steps)
+        {
+            if (!_registry.GetByCapability(step.Capability).Any())
+            {
+                throw new InvalidOperationException(
+                    $"Planner requested unknown capability '{step.Capability}'");
+            }
+        }
+
+        return plan;
+    }
 }

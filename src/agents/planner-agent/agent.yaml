@@ -1,0 +1,13 @@
+apiVersion: agent.platform/v1
+kind: Agent
+metadata:
+  name: planner-agent
+  description: Proposes execution plans for goals
+spec:
+  capabilities:
+    - planning
+  model:
+    runtime: ollama
+    base: llama3
+  behavior:
+    temperature: 0.1

@@ -16,8 +16,12 @@ Console.WriteLine("========================================");
 Console.WriteLine("Starting Cloud.Infra.Orchestrator");
 Console.WriteLine("========================================");
 
-var endpoint = Environment.GetEnvironmentVariable("OLLAMA_ENDPOINT");
-Console.WriteLine($"OLLAMA_ENDPOINT = {endpoint}");
+/* ============================================================
+ * ENVIRONMENT CHECKS
+ * ============================================================ */
+
+var ollamaEndpoint = Environment.GetEnvironmentVariable("OLLAMA_ENDPOINT");
+Console.WriteLine($"OLLAMA_ENDPOINT = {ollamaEndpoint}");
 
 var agentsPath = Path.Combine(AppContext.BaseDirectory, "agents");
 Console.WriteLine($"Loading agents from: {agentsPath}");
@@ -28,27 +32,17 @@ if (!Directory.Exists(agentsPath))
     return;
 }
 
-var postgreSqlConnectionString =
+var postgresConnectionString =
     Environment.GetEnvironmentVariable("POSTGRESQL_CONNECTION_STRING");
 
-if (string.IsNullOrWhiteSpace(postgreSqlConnectionString))
+if (string.IsNullOrWhiteSpace(postgresConnectionString))
 {
     Console.WriteLine("POSTGRESQL_CONNECTION_STRING not set. Exiting.");
     return;
 }
 
-// Try to apply SQL migrations if a migrations file is present in the repo.
-try
-{
-    await ApplyMigrationsIfPresent(postgreSqlConnectionString);
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Warning: failed to apply migrations: {ex.Message}");
-}
-
 /* ============================================================
- * HOST + DI
+ * HOST + DEPENDENCY INJECTION
  * ============================================================ */
 
 using var host = Host.CreateDefaultBuilder(args)
@@ -56,45 +50,40 @@ using var host = Host.CreateDefaultBuilder(args)
     {
         services.AddLogging();
 
-        services.AddScoped<
-            IPersistencePostgreSql<AgentExecutionContextRecord>>(
-            sp => new PersistencePostgreSql<AgentExecutionContextRecord>(
+        services.AddScoped<IPersistencePostgreSql<AgentExecutionContextRecord>>(sp =>
+            new PersistencePostgreSql<AgentExecutionContextRecord>(
                 sp.GetRequiredService<ILogger<PersistencePostgreSql<AgentExecutionContextRecord>>>(),
-                postgreSqlConnectionString,
+                postgresConnectionString,
                 "executions_tbl"));
 
-        services.AddScoped<
-            IPersistencePostgreSql<ExecutionStepRecord>>(
-            sp => new PersistencePostgreSql<ExecutionStepRecord>(
+        services.AddScoped<IPersistencePostgreSql<ExecutionStepRecord>>(sp =>
+            new PersistencePostgreSql<ExecutionStepRecord>(
                 sp.GetRequiredService<ILogger<PersistencePostgreSql<ExecutionStepRecord>>>(),
-                postgreSqlConnectionString,
+                postgresConnectionString,
                 "execution_steps_tbl"));
 
-        services.AddScoped<
-            IPersistencePostgreSql<ApprovalRecord>>(
-            sp => new PersistencePostgreSql<ApprovalRecord>(
+        services.AddScoped<IPersistencePostgreSql<ApprovalRecord>>(sp =>
+            new PersistencePostgreSql<ApprovalRecord>(
                 sp.GetRequiredService<ILogger<PersistencePostgreSql<ApprovalRecord>>>(),
-                postgreSqlConnectionString,
+                postgresConnectionString,
                 "approvals_tbl"));
 
-        services.AddScoped<
-            IAgentExecutionContextStoreService,
-            AgentExecutionContextStoreService>();
+        services.AddScoped<IAgentExecutionContextStoreService, AgentExecutionContextStoreService>();
     })
     .Build();
 
 using var scope = host.Services.CreateScope();
-var sp = scope.ServiceProvider;
+var services = scope.ServiceProvider;
 
 var executionStore =
-    sp.GetRequiredService<IAgentExecutionContextStoreService>();
+    services.GetRequiredService<IAgentExecutionContextStoreService>();
 
 /* ============================================================
  * AGENT REGISTRY
  * ============================================================ */
 
 var registry = new AgentRegistry();
-var loader = new YamlAgentConfigLoader();
+var yamlLoader = new YamlAgentConfigLoader();
 
 foreach (var agentDir in Directory.GetDirectories(agentsPath))
 {
@@ -102,7 +91,7 @@ foreach (var agentDir in Directory.GetDirectories(agentsPath))
     if (!File.Exists(agentYaml))
         continue;
 
-    AgentConfigDto dto = loader.Load(agentYaml);
+    AgentConfigDto dto = yamlLoader.Load(agentYaml);
     var config = AgentConfigMapper.Map(dto);
     var kernel = AgentKernelFactory.Create(config.Name);
 
@@ -112,7 +101,10 @@ foreach (var agentDir in Directory.GetDirectories(agentsPath))
 
 Console.WriteLine($"Loaded {registry.All.Count} agents.");
 
-Console.WriteLine("Creating orchestrator...");
+/* ============================================================
+ * ORCHESTRATOR
+ * ============================================================ */
+
 var orchestrator = new Orchestrator(registry);
 
 /* ============================================================
@@ -121,7 +113,7 @@ var orchestrator = new Orchestrator(registry);
 
 var executionId = GetExecutionIdFromArgsOrEnv();
 
-AgentExecutionContext context =
+var context =
     await executionStore.LoadAsync(executionId)
     ?? new AgentExecutionContext
     {
@@ -130,94 +122,38 @@ AgentExecutionContext context =
     };
 
 Console.WriteLine($"Execution Id: {context.Id}");
+Console.WriteLine($"Goal: {context.Goal}");
 
 /* ============================================================
- * WORKFLOW
+ * PLANNING PHASE
  * ============================================================ */
+
+Console.WriteLine("Creating execution plan...");
+var plan = await orchestrator.CreatePlanAsync(context.Goal);
+
+Console.WriteLine("Planner proposed steps:");
+foreach (var step in plan.Steps)
+{
+    Console.WriteLine($"- {step.StepName} ({step.Capability})");
+}
+
+/* ============================================================
+ * WORKFLOW CONSTRUCTION
+ * ============================================================ */
+
+var workflowSteps = plan.Steps
+    .Select(step => new InvokeCapabilityStep
+    {
+        Name = step.StepName,
+        Capability = step.Capability,
+        Prompt = _ => step.Intent
+    })
+    .ToList();
 
 var workflow = new Workflow
 {
-    Name = "secure-infra-workflow",
-    Steps =
-    [
-        new InvokeCapabilityStep
-        {
-            Name = "plan-infrastructure",
-            Capability = "infrastructure",
-            Prompt = _ =>
-                "Create a step-by-step plan for a secure Azure dev environment."
-        },
-
-        new ApprovalStep
-        {
-            Name = "approve-infra-plan",
-            Summary = ctx =>
-            {
-                var plan = ctx.GetLastOutputForCapability("infrastructure");
-                return $"Approve the following infrastructure plan:\n\n{plan}";
-            }
-        },
-
-        new ConditionalStep
-        {
-            Name = "security-review-if-needed",
-            Condition = ctx =>
-            {
-                var infra = ctx.GetLastOutputForCapability("infrastructure");
-                return infra != null &&
-                       infra.Contains("secure", StringComparison.OrdinalIgnoreCase);
-            },
-            IfTrue = new InvokeCapabilityStep
-            {
-                Name = "security-review",
-                Capability = "security-review",
-                Prompt = ctx =>
-                {
-                    var infra = ctx.GetLastOutputForCapability("infrastructure");
-                    return
-$"""
-Review the following plan for security risks.
-Provide individual risk assessments using:
-threat: low | medium | high | critical
-
-{infra}
-""";
-                }
-            }
-        },
-
-        new ConditionalStep
-        {
-            Name = "security-approval-needed",
-            Condition = ctx =>
-            {
-                var secReview = ctx.GetLastOutputForCapability("security-review");
-                return secReview != null &&
-                       (secReview.Contains("threat: high", StringComparison.OrdinalIgnoreCase)
-                        || secReview.Contains("threat: critical", StringComparison.OrdinalIgnoreCase));
-            },
-            IfTrue = new ApprovalStep
-            {
-                Name = "approve-security-review",
-                Summary = ctx =>
-                {
-                    var secReview = ctx.GetLastOutputForCapability("security-review");
-                    return $"Approve the following security review:\n\n{secReview}";
-                }
-            }
-        },
-
-        new InvokeCapabilityStep
-        {
-            Name = "generate-docs",
-            Capability = "documentation",
-            Prompt = ctx =>
-            {
-                var infra = ctx.GetLastOutputForCapability("infrastructure");
-                return $"Generate README.md documentation:\n\n{infra}";
-            }
-        }
-    ]
+    Name = "planned-workflow",
+    Steps = workflowSteps
 };
 
 /* ============================================================
@@ -261,29 +197,34 @@ while (true)
 }
 
 /* ============================================================
- * OUTPUT
+ * FINAL OUTPUT
  * ============================================================ */
 
+Console.WriteLine();
+Console.WriteLine("Execution Steps:");
 foreach (var step in context.Steps)
 {
     Console.WriteLine($"[{step.ExecutedAt}] {step.AgentName} ({step.Capability})");
 }
 
 Console.WriteLine();
-Console.WriteLine("========== APPROVALS ==========");
-
+Console.WriteLine("Approvals:");
 foreach (var approval in context.Approvals)
 {
     Console.WriteLine(
         $"{approval.StepName} | Approved={approval.Approved} | By={approval.ApprovedBy} | At={approval.ApprovedAt}");
 }
 
+Console.WriteLine();
 Console.WriteLine("Execution complete. Press ENTER to exit.");
 Console.ReadLine();
 
+/* ============================================================
+ * HELPERS
+ * ============================================================ */
+
 static Guid GetExecutionIdFromArgsOrEnv()
 {
-    // 1️⃣ Command-line: --execution-id=<guid>
     var arg = Environment.GetCommandLineArgs()
         .FirstOrDefault(a => a.StartsWith("--execution-id=", StringComparison.OrdinalIgnoreCase));
 
@@ -293,7 +234,6 @@ static Guid GetExecutionIdFromArgsOrEnv()
         return parsed;
     }
 
-    // 2️⃣ Environment variable
     var env = Environment.GetEnvironmentVariable("EXECUTION_ID");
     if (!string.IsNullOrWhiteSpace(env) &&
         Guid.TryParse(env, out parsed))
@@ -301,43 +241,5 @@ static Guid GetExecutionIdFromArgsOrEnv()
         return parsed;
     }
 
-    // 3️⃣ Default: create a NEW execution
     return Guid.NewGuid();
-}
-
-static async Task ApplyMigrationsIfPresent(string connectionString)
-{
-    // Look upward from the app base directory for 'databases/db_migrations.sql'
-    var baseDir = AppContext.BaseDirectory;
-    var dir = new DirectoryInfo(baseDir);
-
-    FileInfo? migrationsFile = null;
-    while (dir != null)
-    {
-        var candidate = Path.Combine(dir.FullName, "databases", "db_migrations.sql");
-        if (File.Exists(candidate))
-        {
-            migrationsFile = new FileInfo(candidate);
-            break;
-        }
-
-        dir = dir.Parent;
-    }
-
-    if (migrationsFile == null)
-    {
-        Console.WriteLine("No migrations file found (databases/db_migrations.sql). Skipping migrations.");
-        return;
-    }
-
-    Console.WriteLine($"Applying migrations from: {migrationsFile.FullName}");
-    var sql = await File.ReadAllTextAsync(migrationsFile.FullName);
-
-    await using var conn = new NpgsqlConnection(connectionString);
-    await conn.OpenAsync();
-    await using var cmd = conn.CreateCommand();
-    cmd.CommandText = sql;
-    await cmd.ExecuteNonQueryAsync();
-
-    Console.WriteLine("Migrations applied (if needed).");
 }
