@@ -1,8 +1,7 @@
 # Ignore build outputs, binaries, and IDE files
 [Bb]in/
 [Oo]bj/
-.vs/
-**/.vs/
+.vs
 .idea/
 *.user
 *.userosscache
